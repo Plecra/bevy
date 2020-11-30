@@ -7,12 +7,11 @@ use crate::{
 use anyhow::Result;
 use bevy_ecs::Res;
 use bevy_tasks::TaskPool;
-use bevy_utils::HashMap;
+use bevy_utils::{HashMap, Uuid};
 use crossbeam_channel::TryRecvError;
 use parking_lot::RwLock;
 use std::{collections::hash_map::Entry, path::Path, sync::Arc};
 use thiserror::Error;
-use uuid::Uuid;
 
 /// Errors that occur while loading assets with an AssetServer
 #[derive(Error, Debug)]
@@ -392,7 +391,7 @@ impl AssetServer {
     pub(crate) fn update_asset_storage<T: Asset>(&self, assets: &mut Assets<T>) {
         let asset_lifecycles = self.server.asset_lifecycles.read();
         let asset_lifecycle = asset_lifecycles.get(&T::TYPE_UUID).unwrap();
-        let mut asset_sources = self.server.asset_sources.write();
+        let mut asset_sources_guard = None;
         let channel = asset_lifecycle
             .downcast_ref::<AssetLifecycleChannel<T>>()
             .unwrap();
@@ -402,6 +401,8 @@ impl AssetServer {
                 Ok(AssetLifecycleEvent::Create(result)) => {
                     // update SourceInfo if this asset was loaded from an AssetPath
                     if let HandleId::AssetPathId(id) = result.id {
+                        let asset_sources = asset_sources_guard
+                            .get_or_insert_with(|| self.server.asset_sources.write());
                         if let Some(source_info) = asset_sources.get_mut(&id.source_path_id()) {
                             if source_info.version == result.version {
                                 source_info.committed_assets.insert(id.label_id());
@@ -416,6 +417,8 @@ impl AssetServer {
                 }
                 Ok(AssetLifecycleEvent::Free(handle_id)) => {
                     if let HandleId::AssetPathId(id) = handle_id {
+                        let asset_sources = asset_sources_guard
+                            .get_or_insert_with(|| self.server.asset_sources.write());
                         if let Some(source_info) = asset_sources.get_mut(&id.source_path_id()) {
                             source_info.committed_assets.remove(&id.label_id());
                             if source_info.is_loaded() {

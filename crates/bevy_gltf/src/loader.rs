@@ -11,7 +11,9 @@ use bevy_render::{
     pipeline::PrimitiveTopology,
     prelude::{Color, Texture},
     render_graph::base,
-    texture::{AddressMode, FilterMode, SamplerDescriptor, TextureFormat},
+    texture::{
+        AddressMode, Extent3d, FilterMode, SamplerDescriptor, TextureDimension, TextureFormat,
+    },
 };
 use bevy_scene::Scene;
 use bevy_transform::{
@@ -44,8 +46,6 @@ pub enum GltfError {
     BufferFormatUnsupported,
     #[error("Invalid image mime type.")]
     InvalidImageMimeType(String),
-    #[error("Failed to convert image to rgb8.")]
-    ImageRgb8ConversionFailure,
     #[error("Failed to load an image.")]
     ImageError(#[from] image::ImageError),
     #[error("Failed to load an asset path.")]
@@ -131,16 +131,15 @@ async fn load_gltf<'a, 'b>(
             }?;
             let image = image::load_from_memory_with_format(buffer, format)?;
             let size = image.dimensions();
-            let image = image
-                .as_rgba8()
-                .ok_or(GltfError::ImageRgb8ConversionFailure)?;
+            let image = image.into_rgba8();
 
             let texture_label = texture_label(&texture);
             load_context.set_labeled_asset(
                 &texture_label,
                 LoadedAsset::new(Texture {
                     data: image.clone().into_vec(),
-                    size: bevy_math::f32::vec2(size.0 as f32, size.1 as f32),
+                    size: Extent3d::new(size.0, size.1, 1),
+                    dimension: TextureDimension::D2,
                     format: TextureFormat::Rgba8Unorm,
                     sampler: texture_sampler(&texture)?,
                 }),
